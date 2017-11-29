@@ -32,7 +32,6 @@ class FeatureMap(object):
         self.whiten = whiten
         self.dataset = dataset
 
-
     def _getRandomPatches(self, image):
         patches = []
         d, x, y = image.shape
@@ -60,13 +59,12 @@ class FeatureMap(object):
         '''
             Train k-means patch feature mapping.
         '''
-        #processPool = Pool(processes=processes)
-
         def _processBatch(batch, estimator):
             # remove extra dim
             batch = list(map(np.squeeze, batch))
             # get all patches
-            patches = list(chain.from_iterable(map(self._getRandomPatches, batch)))
+            patches = list(chain.from_iterable(
+                map(self._getRandomPatches, batch)))
 
             if self.normalize:
                 patches = list(map(self._normalize, patches))
@@ -74,6 +72,7 @@ class FeatureMap(object):
                 patches = list(map(self._whiten, patches))
             flattened = np.vstack(map(lambda x: x.flatten(), patches))
             estimator.partial_fit(flattened)
+
 
         self.estimator = MiniBatchKMeans(n_clusters=self.K,
                                          batch_size=batchsize,
@@ -96,3 +95,33 @@ class FeatureMap(object):
                 except tf.errors.OutOfRangeError:
                     break
             pbar.close()
+
+    def predict(self, X):
+        '''
+            X: an iterable of patches.
+
+            Return k-length vector for each x \in X where
+                         [ 1 if k = argmin_j ||c_j - x||^2_2
+                f_k(x) = |
+                         [ 0 otherwise
+
+            This is the K-mean (hard) metric in Coates et al. 2012.
+            At some point perhaps we will implement K-means (triangle),
+            which is a softer threshold on k-membership.
+        '''
+        N = X.shape[0]
+        preds = np.zeros((N, self.K))
+        for i, n in enumerate(X):
+            thispred = np.zeros(self.K)
+            nearest = self.estimator.predict(n.reshape(1, -1))
+            thispred[nearest] = 1
+            preds[i] = thispred
+
+        return(np.vstack(preds))
+
+
+
+
+
+
+
